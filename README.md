@@ -142,7 +142,6 @@ flowchart TD
 
 ### Phase 3: Comprehensive Workload Benchmarking & Evaluation
 
-- Implement standard YCSB (Yahoo! Cloud Serving Benchmark) workload distributions (Workloads A through F).
 - Run exhaustive comparative evaluations comparing SEAL-Cache against Traditional LRU/LFU and static Group Cache under varying read/write ratios.
 - Add export utilities for experiment results (CSV, JSON, and publication-ready charting data).
 
