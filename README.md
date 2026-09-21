@@ -103,6 +103,7 @@ flowchart TD
 ## Implementation Progress
 
 ### Completed So Far
+
 - [x] **Project Skeleton & Directory Organization**: Structured backend modular packages (`api`, `cache`, `lsm`, `workload`, `experiments`) and frontend workspace.
 - [x] **LSM Storage Engine Foundation**:
   - In-memory MemTable implementation with sorted key-value storage.
@@ -128,21 +129,25 @@ flowchart TD
 ## Upcoming Phases & Roadmap
 
 ### Phase 1: Advanced Semantic Profiling & Dynamic Rebuilding
+
 - Implement selective in-cache group rebuilding to partially refresh modified groups instead of evicting them entirely.
 - Introduce adaptive decay rates for group utility scores under bursty write workloads.
 - Add support for semantic range predicates and dynamic group boundary auto-tuning.
 
 ### Phase 2: LSM Storage Hardening & Concurrency
+
 - Integrate Bloom filters for fast negative lookups across SSTables.
 - Optimize multi-way merge compactions with size-tiered and leveled compaction tuning.
 - Introduce asynchronous thread pools for background compaction and non-blocking MemTable flushes.
 
 ### Phase 3: Comprehensive Workload Benchmarking & Evaluation
+
 - Implement standard YCSB (Yahoo! Cloud Serving Benchmark) workload distributions (Workloads A through F).
 - Run exhaustive comparative evaluations comparing SEAL-Cache against Traditional LRU/LFU and static Group Cache under varying read/write ratios.
 - Add export utilities for experiment results (CSV, JSON, and publication-ready charting data).
 
 ### Phase 4: Full Dashboard Visualization & Real-Time Telemetry
+
 - Real-time animated visualization of LSM tree compactions, MemTable flushes, and SSTable promotions.
 - Interactive inspection of cached groups, their constituent keys, and current lifecycle states (`VALID`, `REASSESS`, `EVICTED`).
 - Live comparison graphs displaying hit ratios and disk I/O savings side by side.
@@ -174,6 +179,7 @@ flowchart TD
 ## How to Run
 
 ### Step 1: Start Backend
+
 ```bash
 cd backend
 python -m venv venv
@@ -181,13 +187,16 @@ venv\Scripts\activate       # On Linux/macOS: source venv/bin/activate
 pip install -r requirements.txt
 python run.py
 ```
+
 - **Backend API**: `http://localhost:8000`
 - **Swagger Documentation**: `http://localhost:8000/docs`
 
 ### Step 2: Start Frontend
+
 ```bash
 cd frontend
 npm install
 npm run dev
 ```
+
 - **Dashboard UI**: `http://localhost:5173`
