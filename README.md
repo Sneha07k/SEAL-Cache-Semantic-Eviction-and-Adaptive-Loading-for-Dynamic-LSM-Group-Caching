@@ -1,128 +1,175 @@
-# SEAL-Cache Simulator - Milestone 1 (50% Milestone)
+# SEAL-Cache
 
-## Architecture Overview
-This package contains the complete 50% milestone:
-1. Backend: Leveled LSM-tree storage engine, multi-policy caching (LRU, LFU, SEAL-Core), workload trace generator, and experiment runner.
-2. Frontend: Dedicated React dashboard visualizing the Memtable, SSTable levels, cache hit inspection, and benchmark execution.
+## Semantic Eviction and Adaptive Loading for Dynamic LSM-Tree Group Caching
 
-## System Overview
+SEAL-Cache is an experimental systems research project that investigates adaptive caching for dynamic Log-Structured Merge-tree (LSM) key-value storage engines.
 
-<img width="3812" height="5062" alt="seal_cache_architecture (1)" src="https://github.com/user-attachments/assets/6464a26f-7ad3-4324-8e8b-aaae4635209a" />
+LSM-based key-value stores provide high write throughput, but maintaining effective caching remains challenging under dynamic workloads. While traditional Group Caching groups logically related key-value data to accelerate access, frequent writes, MemTable flushes, and background compactions continuously reorganize the underlying SSTables, degrading the accuracy and utility of previously cached groups.
+
+**SEAL-Cache** introduces an adaptive caching paradigm: instead of immediately evicting a cached group when its underlying storage structure updates, the system monitors access behavior, update intensity, and compaction signals to mark affected groups for dynamic reassessment—deciding whether to **Keep**, **Rebuild**, or **Evict**.
 
 ---
 
-## Entity Relationship (ER) Diagram
-
-The following ER diagram illustrates the core domain entities across the LSM storage engine, the adaptive SEAL-Cache layer, and the workload evaluation framework:
+## System Architecture
 
 ```mermaid
-erDiagram
-    %% Storage & LSM Entities
-    RECORD {
-        string key PK
-        string value
-        bigint timestamp
-        boolean is_tombstone
-    }
+flowchart TD
+    subgraph UI_CLIENT["Client & Interface Layer"]
+        UI["React Visualization Dashboard<br/>(Telemetry, State Inspection, Benchmarking)"]
+        WG["Workload Trace Generator<br/>(Point Lookups, Range Scans, Writes)"]
+    end
 
-    MEMTABLE {
-        uuid memtable_id PK
-        int current_size
-        int max_capacity
-        string status
-    }
+    subgraph API_LAYER["API Gateway & Service Layer"]
+        API["FastAPI REST Endpoints<br/>(/api/lsm, /api/cache, /api/experiments, /api/workload)"]
+    end
 
-    SSTABLE {
-        uuid file_id PK
-        int level_number
-        string min_key
-        string max_key
-        int size_bytes
-    }
+    subgraph CACHE_SUBSYSTEM["SEAL-Cache Subsystem (Adaptive Group Caching)"]
+        CM["Cache Manager & Request Router"]
+        subgraph POLICIES["Pluggable Caching Policies"]
+            TRAD["Traditional Cache<br/>(LRU / LFU)"]
+            GRP["Baseline Group Cache"]
+            SEAL["SEAL-Cache Engine"]
+        end
+        subgraph SEAL_CORE["SEAL Core Modules"]
+            GR["Group Registry & Semantic Catalog"]
+            US["Utility Scorer & Access Monitor"]
+            RQ["Reassessment Queue & Decision Engine<br/>(Keep | Rebuild | Evict)"]
+        end
+    end
 
-    LSM_TREE {
-        uuid tree_id PK
-        int max_levels
-        int memtable_threshold
-    }
+    subgraph LSM_ENGINE["LSM Storage Engine"]
+        subgraph MEMORY_TIER["In-Memory Tier"]
+            WAL["Write-Ahead Log (WAL)"]
+            MT["Active MemTable"]
+            IMT["Immutable MemTable"]
+        end
+        subgraph DISK_TIER["On-Disk Tier (Hierarchical Levels)"]
+            L0["Level 0 SSTables"]
+            L1["Level 1 SSTables"]
+            L2["Level 2+ SSTables"]
+        end
+        COMP["Compaction & Flush Controller"]
+    end
 
-    %% Caching Entities
-    CACHE_STORE {
-        uuid cache_id PK
-        string policy_type
-        int max_capacity
-        int current_usage
-    }
+    subgraph METRICS_ENGINE["Evaluation & Experimentation Suite"]
+        EXP["Experiment Runner"]
+        METRICS["Metrics Aggregator<br/>(Hit Ratio, Disk I/O, Latency, Amplification)"]
+    end
 
-    CACHE_GROUP {
-        uuid group_id PK
-        uuid cache_id FK
-        string semantic_tag
-        float utility_score
-        string lifecycle_state
-        int access_count
-        int invalidation_count
-    }
+    %% Interactions
+    UI --> API
+    WG --> API
+    API --> CM
+    API --> EXP
 
-    CACHED_RECORD {
-        uuid entry_id PK
-        uuid group_id FK
-        string key FK
-        int position_index
-    }
+    CM --> POLICIES
+    SEAL --> GR
+    SEAL --> US
+    SEAL --> RQ
 
-    REASSESSMENT_TASK {
-        uuid task_id PK
-        uuid group_id FK
-        float degradation_score
-        string recommended_action
-        datetime evaluated_at
-    }
+    CM -- "Cache Miss / Storage Lookup" --> LSM_ENGINE
+    API -- "Write Operations" --> WAL
+    API -- "Write Operations" --> MT
 
-    %% Workload & Evaluation Entities
-    WORKLOAD_REQUEST {
-        uuid request_id PK
-        string operation_type
-        string target_key
-        string key_range_end
-        datetime timestamp
-    }
+    MT -- "Flush" --> IMT
+    IMT -- "Persist SSTables" --> COMP
+    COMP -- "Flush / Compact" --> L0
+    L0 --> L1
+    L1 --> L2
 
-    EXPERIMENT_RUN {
-        uuid run_id PK
-        string cache_policy
-        int total_requests
-        float hit_ratio
-        int disk_reads
-        float avg_latency_ms
-    }
+    COMP -. "Compaction / Structural Signal" .-> RQ
+    MT -. "Update / Invalidation Signal" .-> US
 
-    %% Relationships
-    MEMTABLE }|--|| LSM_TREE : "belongs to"
-    MEMTABLE ||--o{ RECORD : "buffers"
-    SSTABLE ||--|{ RECORD : "persists"
-    SSTABLE }|--|| LSM_TREE : "indexed within"
-
-    CACHE_STORE ||--o{ CACHE_GROUP : "manages"
-    CACHE_GROUP ||--|{ CACHED_RECORD : "contains"
-    RECORD ||--o{ CACHED_RECORD : "referenced by"
-    CACHE_GROUP ||--o{ REASSESSMENT_TASK : "evaluates via"
-
-    WORKLOAD_REQUEST }|--|| CACHE_STORE : "interacts with"
-    EXPERIMENT_RUN ||--o{ WORKLOAD_REQUEST : "executes"
+    EXP --> CM
+    EXP --> LSM_ENGINE
+    EXP --> METRICS
+    METRICS --> UI
 ```
 
-### Entity Descriptions
-- **RECORD**: Represents raw key-value entries with version timestamps and deletion tombstones.
-- **MEMTABLE**: In-memory mutable write buffer before data flushes to persistent SSTable files.
-- **SSTABLE**: Immutable on-disk sorted string table files organized into hierarchical levels.
-- **LSM_TREE**: Orchestrates the storage engine, managing MemTables, level compaction, and lookups.
-- **CACHE_STORE**: The caching subsystem supporting Traditional, Group, and SEAL-Cache eviction strategies.
-- **CACHE_GROUP**: Logical groupings of related keys annotated with utility scores and dynamic lifecycle states (`VALID`, `REASSESS`, `EVICTED`).
-- **CACHED_RECORD**: Association entity linking underlying records to their respective cached group.
-- **REASSESSMENT_TASK**: Triggered when compaction or update activity invalidates group cohesion, evaluating whether to keep, rebuild, or evict.
-- **WORKLOAD_REQUEST**: Read, write, or range-scan queries driving system execution.
-- **EXPERIMENT_RUN**: Records evaluation benchmarks across cache policies (hit ratio, disk I/O, latency).
+### Architectural Components
+
+- **Client & Interface Layer**: Includes the interactive React dashboard for live storage inspection and workload controls, alongside a synthetic and trace-based workload generator.
+- **API Gateway**: FastAPI service routing commands across storage, cache, workload generation, and experiment controllers.
+- **SEAL-Cache Subsystem**:
+  - **Cache Manager**: Coordinates lookups, insertions, and dispatches across Traditional (LRU/LFU), Baseline Group, and SEAL-Cache policies.
+  - **Group Registry**: Organizes keys into logically related groups based on query predicates or semantic tags.
+  - **Utility Scorer**: Continuously updates utility weights based on hit frequency, access recency, and write penalty.
+  - **Reassessment Queue**: Processes structural change notices from the LSM engine, triggering targeted decisions (`KEEP`, `REBUILD`, or `EVICT`) rather than immediate blind invalidation.
+- **LSM Storage Engine**: Hierarchical LSM implementation featuring active/immutable MemTables, Write-Ahead Logging (WAL), on-disk leveled SSTables, and a Compaction & Flush controller.
+- **Evaluation & Experimentation Suite**: Orchestrates reproducible benchmark experiments across policies and logs performance telemetry (cache hit ratio, disk read/write amplification, and request latency).
+
+---
+
+## Implementation Progress
+
+### Completed So Far
+- [x] **Project Skeleton & Directory Organization**: Structured backend modular packages (`api`, `cache`, `lsm`, `workload`, `experiments`) and frontend workspace.
+- [x] **LSM Storage Engine Foundation**:
+  - In-memory MemTable implementation with sorted key-value storage.
+  - SSTable disk layout with index blocks and key ranges.
+  - Leveled hierarchy structure with MemTable-to-L0 flush operations.
+  - Basic level-to-level compaction triggers and key merging.
+- [x] **Multi-Policy Caching Framework**:
+  - Extensible cache abstraction supporting modular replacement algorithms.
+  - Traditional baseline caching policies (LRU and LFU implementations).
+  - Baseline static Group Cache implementation for bundled key retrievals.
+- [x] **SEAL-Cache Core Mechanics**:
+  - Semantic group metadata indexing and key-to-group mapping.
+  - Dynamic utility scoring algorithm based on access frequency and write recency.
+  - Reassessment queue model for evaluating degraded groups.
+- [x] **Workload Generation & Benchmarking Base**:
+  - Request synthesis engine supporting point reads (`GET`), insertions/updates (`PUT`), and range scans (`SCAN`).
+  - Experiment execution harness collecting cache hits, misses, disk I/O, and latency statistics.
+- [x] **Frontend Dashboard Architecture**:
+  - React application setup for visualizing MemTable status, SSTable level distribution, and cache performance metrics.
+
+---
+
+## Upcoming Phases & Roadmap
+
+### Phase 1: Advanced Semantic Profiling & Dynamic Rebuilding
+- Implement selective in-cache group rebuilding to partially refresh modified groups instead of evicting them entirely.
+- Introduce adaptive decay rates for group utility scores under bursty write workloads.
+- Add support for semantic range predicates and dynamic group boundary auto-tuning.
+
+### Phase 2: LSM Storage Hardening & Concurrency
+- Integrate Bloom filters for fast negative lookups across SSTables.
+- Optimize multi-way merge compactions with size-tiered and leveled compaction tuning.
+- Introduce asynchronous thread pools for background compaction and non-blocking MemTable flushes.
+
+### Phase 3: Comprehensive Workload Benchmarking & Evaluation
+- Implement standard YCSB (Yahoo! Cloud Serving Benchmark) workload distributions (Workloads A through F).
+- Run exhaustive comparative evaluations comparing SEAL-Cache against Traditional LRU/LFU and static Group Cache under varying read/write ratios.
+- Add export utilities for experiment results (CSV, JSON, and publication-ready charting data).
+
+### Phase 4: Full Dashboard Visualization & Real-Time Telemetry
+- Real-time animated visualization of LSM tree compactions, MemTable flushes, and SSTable promotions.
+- Interactive inspection of cached groups, their constituent keys, and current lifecycle states (`VALID`, `REASSESS`, `EVICTED`).
+- Live comparison graphs displaying hit ratios and disk I/O savings side by side.
+
+---
+
+## Repository Structure
+
+```
+├── backend/
+│   ├── app/
+│   │   ├── api/             # FastAPI route handlers and request models
+│   │   ├── cache/           # Caching engine and policies (LRU, LFU, Group, SEAL)
+│   │   │   └── policies/    # Specific eviction and reassessment strategies
+│   │   ├── experiments/     # Benchmark runner and metrics collection
+│   │   ├── lsm/             # LSM engine (MemTable, SSTable, Compaction)
+│   │   └── workload/        # Workload trace generator and request definitions
+│   ├── requirements.txt     # Python backend dependencies
+│   └── run.py               # Backend entrypoint
+├── frontend/
+│   ├── src/                 # React components, dashboard views, and visualizers
+│   ├── package.json         # Frontend dependencies and scripts
+│   └── vite.config.js       # Vite build configuration
+└── README.md
+```
+
+---
 
 ## How to Run
 
@@ -130,12 +177,12 @@ erDiagram
 ```bash
 cd backend
 python -m venv venv
-venv\Scripts\activate
+venv\Scripts\activate       # On Linux/macOS: source venv/bin/activate
 pip install -r requirements.txt
 python run.py
 ```
-Backend runs at: http://localhost:8000
-Swagger Docs at: http://localhost:8000/docs
+- **Backend API**: `http://localhost:8000`
+- **Swagger Documentation**: `http://localhost:8000/docs`
 
 ### Step 2: Start Frontend
 ```bash
@@ -143,4 +190,4 @@ cd frontend
 npm install
 npm run dev
 ```
-Frontend runs at: http://localhost:5173
+- **Dashboard UI**: `http://localhost:5173`
