@@ -1,54 +1,54 @@
-def format_key(index, key_space_size):
-    width = len(str(max(key_space_size - 1, 0)))
-    return f"k{index:0{width}d}"
+"""Deterministic synthetic workloads.
+
+Keys are drawn uniformly or from a Zipf distribution (hot keys get most accesses).
+Week 3 adds presets modelled on LinkBench / Assoc_2ry mixes.
+"""
+import bisect
+import itertools
+import random
 
 
-def choose_operation_type(config, rng):
-    r = rng.random()
-    cumulative = 0.0
-    for name, ratio in (
-        ("point_read", config.point_read_ratio),
-        ("range_scan", config.range_scan_ratio),
-        ("insert", config.insert_ratio),
-        ("update", config.update_ratio),
-        ("delete", config.delete_ratio),
-    ):
-        cumulative += ratio
-        if r < cumulative:
-            return name
-    return "point_read"
+class ZipfSampler:
+    """Draws integers in [0, n) with P(i) proportional to 1/(i+1)^theta."""
+
+    def __init__(self, n, theta, rng, perm_seed=None):
+        self.rng = rng
+        weights = [1.0 / (i + 1) ** theta for i in range(n)]
+        self.cdf = list(itertools.accumulate(weights))
+        self.total = self.cdf[-1]
+        # Scatter hot ranks over the key space so hot keys are not all adjacent.
+        # perm_seed fixes WHICH keys are hot independently of the op stream, so a warm-up
+        # trace and a measured trace can share one hot set. None = draw from the op rng
+        # (legacy behaviour: every trace seed gets its own hot set).
+        self.perm = list(range(n))
+        (rng if perm_seed is None else random.Random(perm_seed)).shuffle(self.perm)
+
+    def __call__(self):
+        rank = bisect.bisect_left(self.cdf, self.rng.random() * self.total)
+        return self.perm[min(rank, len(self.perm) - 1)]
 
 
-def generate_trace(config, rng):
-    keys = [format_key(i, config.key_space_size) for i in range(config.key_space_size)]
-    live_keys = set()
-    operations = []
-    for _ in range(config.operation_count):
-        op_type = choose_operation_type(config, rng)
-        if op_type == "insert":
-            key = rng.choice(keys)
-            value = f"v{rng.randint(0, 1000000)}"
-            operations.append({"type": "put", "key": key, "value": value})
-            live_keys.add(key)
-        elif op_type == "update":
-            candidates = list(live_keys) if live_keys else keys
-            key = rng.choice(candidates)
-            value = f"v{rng.randint(0, 1000000)}"
-            operations.append({"type": "put", "key": key, "value": value})
-            live_keys.add(key)
-        elif op_type == "delete":
-            candidates = list(live_keys) if live_keys else keys
-            key = rng.choice(candidates)
-            operations.append({"type": "delete", "key": key})
-            live_keys.discard(key)
-        elif op_type == "range_scan":
-            lo_index = rng.randint(0, config.key_space_size - 1)
-            length = rng.randint(config.scan_length_min, config.scan_length_max)
-            hi_index = min(lo_index + length, config.key_space_size - 1)
-            operations.append(
-                {"type": "scan", "lo": keys[lo_index], "hi": keys[hi_index]}
-            )
+def generate(n, key_space, seed, write_ratio=0.3, delete_ratio=0.05, scan_ratio=0.2,
+             scan_len=(10, 100), zipf_theta=0.0, perm_seed=None):
+    """Return a list of ops: ("put", k, v) | ("delete", k) | ("get", k) | ("scan", lo, hi).
+
+    write_ratio covers puts; deletes and scans are separate shares; the rest are gets.
+    zipf_theta = 0 gives uniform keys; 0.8-0.99 gives realistic skew.
+    """
+    if write_ratio + delete_ratio + scan_ratio > 1:
+        raise ValueError("ratios sum to more than 1")
+    rng = random.Random(seed)
+    pick = ZipfSampler(key_space, zipf_theta, rng, perm_seed) if zipf_theta > 0 else (
+        lambda: rng.randrange(key_space))
+    ops = []
+    for i in range(n):
+        r, k = rng.random(), pick()
+        if r < write_ratio:
+            ops.append(("put", k, f"v{seed}-{i}"))
+        elif r < write_ratio + delete_ratio:
+            ops.append(("delete", k))
+        elif r < write_ratio + delete_ratio + scan_ratio:
+            ops.append(("scan", k, k + rng.randint(*scan_len) - 1))
         else:
-            key = rng.choice(keys)
-            operations.append({"type": "get", "key": key})
-    return operations
+            ops.append(("get", k))
+    return ops

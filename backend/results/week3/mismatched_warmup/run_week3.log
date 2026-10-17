@@ -1,0 +1,17 @@
+== write_sweep_200k
+  write_ratio=0.0 done (112s)
+  write_ratio=0.2 done (300s)
+  write_ratio=0.5 done (643s)
+  write_ratio=0.8 done (1032s)
+
+Query block reads per query, mean ± 95% CI (10 seeds). Lower is better.
+write_ratio            none           block           range           group       zio-naive      group+seed  group+complete   block/group  range/group
+        0.0    1.461 ±0.005    1.312 ±0.005    1.291 ±0.005    1.190 ±0.005    1.190 ±0.005    1.190 ±0.005    1.190 ±0.005         1.10x       1.08x
+        0.2    1.554 ±0.005    1.368 ±0.004    1.426 ±0.006    1.303 ±0.005    1.288 ±0.004    1.289 ±0.004    1.302 ±0.005         1.05x       1.09x
+        0.5    1.576 ±0.010    1.392 ±0.009    1.456 ±0.009    1.376 ±0.009    1.329 ±0.010    1.329 ±0.010    1.368 ±0.010         1.01x       1.06x
+        0.8    1.610 ±0.017    1.430 ±0.015    1.490 ±0.019    1.481 ±0.018    1.390 ±0.018    1.398 ±0.017    1.460 ±0.017         0.97x       1.01x
+
+Raw rows: results\week3\write_sweep_200k.csv
+== scan_sweep_200k
+  scan_share=0.2 done (321s)
+  scan_share=0.5 done (664s)

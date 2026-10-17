@@ -1,0 +1,13 @@
+  write_ratio=0.0 done (92s)
+  write_ratio=0.2 done (192s)
+  write_ratio=0.5 done (483s)
+  write_ratio=0.8 done (754s)
+
+Query block reads per query, mean ± 95% CI (10 seeds). Lower is better.
+write_ratio            none           block           range           group       zio-naive      group+seed  group+complete   block/group  range/group
+        0.0    2.431 ±0.011    2.202 ±0.012    2.190 ±0.015    2.058 ±0.013    2.058 ±0.013    2.058 ±0.013    2.058 ±0.013         1.07x       1.06x
+        0.2    2.789 ±0.011    2.509 ±0.010    2.586 ±0.013    2.394 ±0.010    2.382 ±0.009    2.383 ±0.010    2.392 ±0.010         1.05x       1.08x
+        0.5    2.356 ±0.010    2.129 ±0.008    2.183 ±0.006    2.068 ±0.008    2.021 ±0.009    2.027 ±0.009    2.061 ±0.009         1.03x       1.06x
+        0.8    2.453 ±0.028    2.211 ±0.024    2.277 ±0.019    2.214 ±0.021    2.089 ±0.019    2.095 ±0.018    2.199 ±0.019         1.00x       1.03x
+
+Raw rows: results\week3\tiering_write_200k.csv

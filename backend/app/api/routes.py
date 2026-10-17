@@ -1,171 +1,160 @@
-from fastapi import APIRouter
+"""REST API over service.py. Sessions A and B (?sid=) let the UI compare two caches."""
+from typing import Optional
 
-from ..cache.manager import CacheManager
-from ..config import LSMConfig
-from ..experiments.config_hash import config_hash
-from ..experiments.runner import run_experiment
-from ..lsm.engine import LSMEngine
-from ..rng import RNGProvider
-from ..workload.presets import PRESETS
-from .schemas import (
-    DeleteRequest,
-    ExperimentRequest,
-    PutRequest,
-    ResetRequest,
-)
+from fastapi import APIRouter, HTTPException, Query
+from pydantic import BaseModel, Field
 
-router = APIRouter()
+from .. import results_view
+from ..service import UI_CACHES, Session, run_benchmark
 
-engine = LSMEngine(LSMConfig())
-rng_provider = RNGProvider(1)
-cache_manager = CacheManager(
-    engine, 500, rng_provider, 0.5, 20, 0.3, 0.7, False, 0.6, 0.5
-)
+router = APIRouter(prefix="/api")
+_DEFAULT = dict(block_size=8, memtable_size=64, size_ratio=4, l0_run_limit=3, l1_capacity=256)
+sessions = {"A": Session(cache="group", **_DEFAULT), "B": Session(cache="zio-naive", **_DEFAULT)}
+SID = Query("A", pattern="^[AB]$", description="engine session")
+CACHE_PATTERN = "^(" + "|".join(c.replace("+", r"\+") for c in UI_CACHES) + ")$"
 
 
-@router.post("/reset")
-def reset(request: ResetRequest):
-    global engine, cache_manager, rng_provider
-    config = LSMConfig(
-        memtable_capacity=request.memtable_capacity,
-        base_level_capacity=request.base_level_capacity,
-        size_ratio=request.size_ratio,
-        num_levels=request.num_levels,
-    )
-    engine = LSMEngine(config)
-    rng_provider = RNGProvider(request.seed)
-    cache_manager = CacheManager(
-        engine,
-        request.cache_capacity_bytes,
-        rng_provider,
-        request.replace_threshold,
-        request.max_deltas_per_group,
-        request.eager_rebuild_pressure,
-        request.eager_evict_pressure,
-        request.eager_enabled,
-        request.occupancy_gate,
-        request.low_priority_multiplier,
-    )
-    return engine.state()
+class ConfigIn(BaseModel):
+    block_size: int = Field(8, ge=1, le=256)
+    memtable_size: int = Field(64, ge=1, le=100_000)
+    size_ratio: int = Field(4, ge=2, le=20)
+    l0_run_limit: int = Field(3, ge=1, le=64)
+    l1_capacity: int = Field(256, ge=1)
+    policy: str = Field("leveling", pattern="^(leveling|tiering)$")
+    granularity: str = Field("file", pattern="^(file|level)$")
+    ideal_filters: bool = True
+    cache: str = Field("none", pattern=CACHE_PATTERN)
+    cache_kb: int = Field(32, ge=1, le=4096)
 
 
-@router.post("/put")
-def put(request: PutRequest):
-    engine.put(request.key, request.value)
-    return engine.state()
+class WorkloadIn(BaseModel):
+    n: int = Field(1000, ge=1, le=200_000)
+    key_space: int = Field(1000, ge=1)
+    seed: int = 42
+    write_ratio: float = Field(0.3, ge=0, le=1)
+    delete_ratio: float = Field(0.05, ge=0, le=1)
+    scan_ratio: float = Field(0.2, ge=0, le=1)
+    zipf_theta: float = Field(0.0, ge=0, le=2)
+    perm_seed: Optional[int] = None
 
 
-@router.post("/delete")
-def delete(request: DeleteRequest):
-    engine.delete(request.key)
-    return engine.state()
+class KeyIn(BaseModel):
+    key: int
 
 
-@router.get("/get/{key}")
-def get(key: str):
-    return {"key": key, "value": engine.get(key)}
+class PutIn(BaseModel):
+    key: int
+    value: str = Field(..., min_length=1, max_length=200)
 
 
-@router.get("/scan")
-def scan(lo: str, hi: str):
-    return engine.scan(lo, hi)
+class PutRangeIn(BaseModel):
+    lo: int
+    hi: int
+    step: int = Field(1, ge=1)
+    tag: str = Field("v", max_length=20)
+
+
+class RangeIn(BaseModel):
+    lo: int
+    hi: int
+
+
+class OpsIn(BaseModel):
+    """A batch of operations, e.g. [["scan", 100, 103], ["put", 5, "x"], ["get", 7]]."""
+    ops: list[list] = Field(..., min_length=1, max_length=5000)
+
+
+class BenchIn(BaseModel):
+    caches: list[str]
+    seeds: int = Field(2, ge=1, le=5)
+    keys: int = Field(10_000, ge=1_000, le=30_000)
+    warmup: int = Field(5_000, ge=0, le=60_000)
+    ops: int = Field(10_000, ge=100, le=60_000)
+    write_ratio: float = Field(0.5, ge=0, le=0.95)
+    scan_share: float = Field(0.2, ge=0, le=1)
+    zipf: float = Field(0.8, ge=0.1, le=1.5)
+    cache_frac: float = Field(0.05, ge=0.005, le=0.5)
+    block_size: int = Field(48, ge=4, le=128)
+    policy: str = Field("leveling", pattern="^(leveling|tiering)$")
+    insert_share: float = Field(0.5, ge=0, le=1)
+
+
+def _call(fn, *args, **kwargs):
+    try:
+        return fn(*args, **kwargs)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+@router.get("/meta")
+def meta():
+    return {"caches": UI_CACHES, "sessions": sorted(sessions)}
 
 
 @router.get("/state")
-def state():
-    return engine.state()
+def state(sid: str = SID):
+    return sessions[sid].state()
 
 
-@router.get("/config")
-def config():
-    return engine.config.__dict__
+@router.post("/reset")
+def reset(cfg: Optional[ConfigIn] = None, sid: str = SID):
+    return _call(sessions[sid].reset, **(cfg or ConfigIn()).model_dump())
 
 
-@router.get("/cache/get/{key}")
-def cache_get(key: str):
-    return cache_manager.read_point(engine, key)
+@router.post("/workload")
+def workload(w: WorkloadIn, sid: str = SID):
+    d = w.model_dump()
+    perm = d.pop("perm_seed")
+    if perm is not None:                       # pin the hot-key set (see workload.generator)
+        d["perm_seed"] = perm
+    return _call(sessions[sid].run_workload, d.pop("n"), d.pop("key_space"), d.pop("seed"), **d)
 
 
-@router.get("/cache/scan")
-def cache_scan(lo: str, hi: str):
-    return cache_manager.read_range(engine, lo, hi)
+@router.post("/put")
+def put(p: PutIn, sid: str = SID):
+    return _call(sessions[sid].apply, [("put", p.key, p.value)])
 
 
-@router.get("/cache/state")
-def cache_state():
-    return cache_manager.snapshot()
+@router.post("/put_range")
+def put_range(p: PutRangeIn, sid: str = SID):
+    return _call(sessions[sid].put_range, p.lo, p.hi, p.step, p.tag)
 
 
-@router.get("/cache/affected")
-def cache_affected():
-    return cache_manager.affected_snapshot()
+@router.post("/delete")
+def delete(k: KeyIn, sid: str = SID):
+    return _call(sessions[sid].apply, [("delete", k.key)])
 
 
-@router.get("/cache/compactions")
-def cache_compactions():
-    return cache_manager.compaction_snapshot()
+@router.post("/get")
+def get(k: KeyIn, sid: str = SID):
+    return _call(sessions[sid].get, k.key)
 
 
-@router.get("/workloads")
-def list_workloads():
-    return {name: workload.__dict__ for name, workload in PRESETS.items()}
+@router.post("/scan")
+def scan(r: RangeIn, sid: str = SID):
+    return _call(sessions[sid].scan, r.lo, r.hi)
 
 
-@router.post("/experiment/run")
-def run_experiment_endpoint(request: ExperimentRequest):
-    if request.workload_name not in PRESETS:
-        return {"error": f"unknown workload '{request.workload_name}'"}
-    workload_config = PRESETS[request.workload_name]
-    lsm_config = LSMConfig(
-        memtable_capacity=request.memtable_capacity,
-        base_level_capacity=request.base_level_capacity,
-        size_ratio=request.size_ratio,
-        num_levels=request.num_levels,
-    )
-    result = run_experiment(
-        workload_config,
-        lsm_config,
-        request.cache_capacity_bytes,
-        request.seeds,
-        request.replace_threshold,
-        request.max_deltas_per_group,
-        request.eager_rebuild_pressure,
-        request.eager_evict_pressure,
-        request.eager_enabled,
-        request.occupancy_gate,
-        request.low_priority_multiplier,
-    )
-    result["config_hash"] = config_hash(
-        workload_config,
-        lsm_config,
-        request.cache_capacity_bytes,
-        request.seeds,
-        request.replace_threshold,
-        request.max_deltas_per_group,
-        request.eager_rebuild_pressure,
-        request.eager_evict_pressure,
-        request.eager_enabled,
-        request.occupancy_gate,
-        request.low_priority_multiplier,
-    )
-    return result
+@router.post("/flush")
+def flush(sid: str = SID):
+    return sessions[sid].flush()
 
 
-@router.get("/experiments")
-def list_experiments_endpoint():
-    return []
+@router.post("/ops")
+def ops(o: OpsIn, sid: str = SID):
+    return _call(sessions[sid].apply, [tuple(op) for op in o.ops])
 
 
-@router.get("/experiments/{experiment_id}")
-def get_experiment_endpoint(experiment_id: str):
-    return {}
+@router.post("/benchmark")
+def benchmark(b: BenchIn):
+    return _call(run_benchmark, **b.model_dump())
 
 
-@router.get("/experiments/{experiment_id}/seeds")
-def get_experiment_seeds_endpoint(experiment_id: str):
-    return []
+@router.get("/results")
+def results():
+    return results_view.list_results()
 
 
-@router.get("/experiments/{experiment_id}/events")
-def get_experiment_events_endpoint(experiment_id: str):
-    return []
+@router.get("/results/{name:path}")
+def result(name: str):
+    return _call(results_view.load_result, name)

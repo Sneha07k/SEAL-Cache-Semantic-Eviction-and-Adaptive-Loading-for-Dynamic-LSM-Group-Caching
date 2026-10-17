@@ -1,43 +1,45 @@
-const BASE_URL = 'http://localhost:8000'
-
-export async function fetchState() {
-  const response = await fetch(`${BASE_URL}/state`)
-  return response.json()
+// Thin client for the FastAPI backend (proxied at /api by Vite).
+async function call(path, body, signal) {
+  const res = await fetch(`/api${path}`, {
+    method: body === undefined ? "GET" : "POST",
+    headers: { "Content-Type": "application/json" },
+    body: body === undefined ? undefined : JSON.stringify(body),
+    signal,
+  });
+  if (!res.ok) {
+    let detail = `${res.status} ${res.statusText}`;
+    try {
+      const data = await res.json();
+      detail = typeof data.detail === "string" ? data.detail : JSON.stringify(data.detail);
+    } catch { /* keep status text */ }
+    throw new Error(detail);
+  }
+  return res.json();
 }
 
-export async function resetSimulator(config) {
-  const response = await fetch(`${BASE_URL}/reset`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(config)
-  })
-  return response.json()
-}
+const s = (sid) => `?sid=${sid || "A"}`;
+const enc = (name) => name.split("/").map(encodeURIComponent).join("/");
 
-export async function putKey(key, value) {
-  const response = await fetch(`${BASE_URL}/put`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ key, value })
-  })
-  return response.json()
-}
+export const api = {
+  meta: () => call("/meta"),
+  state: (sid) => call(`/state${s(sid)}`),
+  reset: (cfg, sid) => call(`/reset${s(sid)}`, cfg),
+  workload: (w, sid) => call(`/workload${s(sid)}`, w),
+  ops: (ops, sid) => call(`/ops${s(sid)}`, { ops }),
+  put: (key, value, sid) => call(`/put${s(sid)}`, { key, value }),
+  putRange: (p, sid) => call(`/put_range${s(sid)}`, p),
+  del: (key, sid) => call(`/delete${s(sid)}`, { key }),
+  get: (key, sid) => call(`/get${s(sid)}`, { key }),
+  scan: (lo, hi, sid) => call(`/scan${s(sid)}`, { lo, hi }),
+  flush: (sid) => call(`/flush${s(sid)}`, {}),
+  benchmark: (body, signal) => call("/benchmark", body, signal),
+  results: () => call("/results"),
+  result: (name) => call(`/results/${enc(name)}`),
+};
 
-export async function deleteKey(key) {
-  const response = await fetch(`${BASE_URL}/delete`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ key })
-  })
-  return response.json()
-}
-
-export async function getKey(key) {
-  const response = await fetch(`${BASE_URL}/get/${encodeURIComponent(key)}`)
-  return response.json()
-}
-
-export async function scanRange(lo, hi) {
-  const response = await fetch(`${BASE_URL}/scan?lo=${encodeURIComponent(lo)}&hi=${encodeURIComponent(hi)}`)
-  return response.json()
+export function friendly(e) {
+  if (e?.name === "AbortError") return "Cancelled.";
+  const m = String(e?.message ?? e);
+  return m.includes("Failed to fetch") || m.includes("NetworkError")
+    ? "Can't reach the backend. Start it with: cd backend && python run.py" : m;
 }

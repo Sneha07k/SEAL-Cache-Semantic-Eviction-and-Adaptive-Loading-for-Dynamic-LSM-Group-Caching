@@ -1,0 +1,11 @@
+  scan_share=0.2 done (390s)
+  scan_share=0.5 done (756s)
+  scan_share=0.8 done (1166s)
+
+Query block reads per query, mean ± 95% CI (10 seeds). Lower is better.
+ scan_share            none           block           range           group       zio-naive      group+seed  group+complete   block/group  range/group
+        0.2    1.584 ±0.006    1.387 ±0.004    1.457 ±0.003    1.364 ±0.006    1.316 ±0.006    1.313 ±0.006    1.357 ±0.005         1.02x       1.07x
+        0.5    2.596 ±0.018    2.204 ±0.017    2.427 ±0.013    2.249 ±0.014    2.180 ±0.016    2.184 ±0.012    2.235 ±0.015         0.98x       1.08x
+        0.8    3.599 ±0.021    3.010 ±0.018    3.384 ±0.017    3.081 ±0.018    3.000 ±0.020    3.002 ±0.018    3.060 ±0.016         0.98x       1.10x
+
+Raw rows: results\week3\scan_sweep_200k.csv
