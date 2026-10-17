@@ -1,0 +1,6 @@
+# The simulator core (app/lsm, app/correctness, app/workload) needs only the standard library.
+# These are for the API server and the test runner:
+fastapi>=0.110
+uvicorn>=0.29
+pytest>=8
+httpx>=0.27      # only for tests/test_api.py (FastAPI TestClient)

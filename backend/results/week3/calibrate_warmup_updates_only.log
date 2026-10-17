@@ -1,0 +1,8 @@
+keys=200000 measured ops=40000 write_ratio=0.5 seeds=[100, 101, 102] (mean reads/query; % = change vs previous warm-up)
+  warmup                group            zio-naive   zio gain vs group
+   20000               1.3526               1.2825   +5.18%
+   40000      1.3775 (+1.85%)      1.3100 (+2.14%)   +4.90%
+   80000      1.3820 (+0.32%)      1.3157 (+0.43%)   +4.80%
+
+Rule (<1% change on doubling, group and zio-naive): smallest warm-up = 40000
+Raw rows: results\week3\calibrate_warmup_updates_only_DIAGNOSTIC.csv

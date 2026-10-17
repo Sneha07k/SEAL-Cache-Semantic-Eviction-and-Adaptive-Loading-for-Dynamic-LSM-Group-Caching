@@ -1,0 +1,11 @@
+  zipf=0.6 done (338s)
+  zipf=0.8 done (704s)
+  zipf=0.99 done (1027s)
+
+Query block reads per query, mean ± 95% CI (10 seeds). Lower is better.
+       zipf            none           block           range           group       zio-naive      group+seed  group+complete   block/group  range/group
+        0.6    1.607 ±0.004    1.492 ±0.005    1.557 ±0.004    1.507 ±0.003    1.488 ±0.003    1.488 ±0.003    1.503 ±0.003         0.99x       1.03x
+        0.8    1.584 ±0.006    1.387 ±0.004    1.457 ±0.003    1.364 ±0.006    1.316 ±0.006    1.313 ±0.006    1.357 ±0.005         1.02x       1.07x
+       0.99    1.494 ±0.013    1.074 ±0.008    1.126 ±0.009    1.032 ±0.008    0.953 ±0.007    0.951 ±0.006    1.024 ±0.007         1.04x       1.09x
+
+Raw rows: results\week3\zipf_sweep_200k.csv

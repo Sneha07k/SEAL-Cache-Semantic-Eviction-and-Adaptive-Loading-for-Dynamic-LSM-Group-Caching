@@ -1,0 +1,9 @@
+keys=200000 measured ops=40000 write_ratio=0.5 seeds=[100, 101, 102] (mean reads/query; % = change vs previous warm-up)
+  warmup                group            zio-naive                block   zio gain vs group
+   20000               1.3451               1.2967               1.3689   +3.60%
+   40000      1.3711 (+1.93%)      1.3234 (+2.06%)      1.3982 (+2.14%)   +3.48%
+   80000      1.4083 (+2.71%)      1.3603 (+2.79%)      1.4323 (+2.44%)   +3.41%
+  160000      1.4514 (+3.06%)      1.4063 (+3.38%)      1.4829 (+3.53%)   +3.11%
+
+Rule (<1% change on doubling, group and zio-naive): NOT met within the range tried
+Raw rows: results\week3\calibrate_warmup.csv
