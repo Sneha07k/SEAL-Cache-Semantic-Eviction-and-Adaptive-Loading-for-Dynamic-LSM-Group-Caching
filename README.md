@@ -161,33 +161,6 @@ flowchart TD
 
 ---
 
-## Upcoming Phases & Roadmap
-
-### Phase 1: Advanced Semantic Profiling & Dynamic Rebuilding
-
-- Implement selective in-cache group rebuilding to partially refresh modified groups instead of evicting them entirely.
-- Introduce adaptive decay rates for group utility scores under bursty write workloads.
-- Add support for semantic range predicates and dynamic group boundary auto-tuning.
-
-### Phase 2: LSM Storage Hardening & Concurrency
-
-- Integrate Bloom filters for fast negative lookups across SSTables.
-- Optimize multi-way merge compactions with size-tiered and leveled compaction tuning.
-- Introduce asynchronous thread pools for background compaction and non-blocking MemTable flushes.
-
-### Phase 3: Comprehensive Workload Benchmarking & Evaluation
-
-- Run exhaustive comparative evaluations comparing SEAL-Cache against Traditional LRU/LFU and static Group Cache under varying read/write ratios.
-- Add export utilities for experiment results (CSV, JSON, and publication-ready charting data).
-
-### Phase 4: Full Dashboard Visualization & Real-Time Telemetry
-
-- Real-time animated visualization of LSM tree compactions, MemTable flushes, and SSTable promotions.
-- Interactive inspection of cached groups, their constituent keys, and current lifecycle states (`VALID`, `REASSESS`, `EVICTED`).
-- Live comparison graphs displaying hit ratios and disk I/O savings side by side.
-
----
-
 ## Repository Structure
 
 ```
