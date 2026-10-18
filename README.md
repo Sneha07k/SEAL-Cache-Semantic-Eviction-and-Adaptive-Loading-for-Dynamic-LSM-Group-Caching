@@ -420,12 +420,9 @@ The UI is for exploring and teaching, not for producing paper numbers.
 
 | View | Screenshot |
 |---|---|
-| Benchmark | <img width="1210" height="664" alt="image" src="https://github.com/user-attachments/assets/8ab9f7b0-5e4e-4683-ac45-e06827d09362" />
- |
-| Results | <img width="1204" height="664" alt="image" src="https://github.com/user-attachments/assets/13a965a8-b6de-4948-b202-8709c3b1b1e0" />
- |
-| Engine lab | <img width="1198" height="657" alt="image" src="https://github.com/user-attachments/assets/492109e8-3d25-41d1-b27c-4ffeae42b66b" />
- |
+| Benchmark | <img width="1210" height="664" alt="Benchmark" src="https://github.com/user-attachments/assets/8ab9f7b0-5e4e-4683-ac45-e06827d09362" /> |
+| Results | <img width="1204" height="664" alt="Results" src="https://github.com/user-attachments/assets/13a965a8-b6de-4948-b202-8709c3b1b1e0" /> |
+| Engine Lab | <img width="1198" height="657" alt="Engine Lab" src="https://github.com/user-attachments/assets/492109e8-3d25-41d1-b27c-4ffeae42b66b" /> |
 
 ## Repository layout
 
