@@ -1,7 +1,3 @@
-"""Service layer used by the API (testable without a server).
-
-Session = engine + optional cache + flush/compaction log. run_benchmark() wraps run_trace().
-"""
 from dataclasses import asdict, fields
 
 from .config import LSMConfig
@@ -10,19 +6,18 @@ from .lsm.engine import LSMEngine
 from .lsm.io import LSMObserver
 from .workload.generator import generate
 
-LAYERS_SHOWN = 8        # cap for the UI
+LAYERS_SHOWN = 8        
 MAX_GROUPS_SHOWN = 4000
 MAX_EVENTS = 200
 UI_CACHES = ["none", "block", "range", "group", "group+seed", "group+complete", "zio-naive"]
 
-# counters only touched in on_flush/on_compaction
+
 EVENT_KEYS = ("flush_seeded", "case1_kept", "case2_discarded", "case2_completed",
               "zio_skipped", "groups_created_flush_seed", "groups_created_completed",
               "kv_copied_flush_seed", "kv_copied_completed")
 
 
 class EventLog(LSMObserver):
-    """Flush/compaction log with the cache counters each event changed (registered after the cache)."""
 
     def __init__(self, session):
         self.session = session
@@ -82,7 +77,7 @@ class Session:
         self.engine.observers.append(self.log)
         return self.state()
 
-    # ------------------------------------------------------------ operations
+   
     def apply(self, ops):
         eng = self.engine
         arity = {"put": 3, "delete": 2, "get": 2, "scan": 3}
@@ -113,7 +108,6 @@ class Session:
         return self.apply(generate(n, key_space, seed, **mix))
 
     def put_range(self, lo, hi, step=1, tag="v"):
-        """Write keys lo, lo+step, ... <= hi (a burst of new data, e.g. into a hot range)."""
         if step < 1 or hi < lo or (hi - lo) // step > 50_000:
             raise ValueError("bad range")
         return self.apply([("put", k, f"{tag}{k}") for k in range(lo, hi + 1, step)])
@@ -136,7 +130,7 @@ class Session:
         self.engine.flush()
         return self.state()
 
-    # --------------------------------------------------------------- reports
+   
     def _cache_stats(self):
         return dict(getattr(self.cache_obj, "stats", {}))
 
@@ -153,7 +147,6 @@ class Session:
         }
 
     def cache_state(self):
-        """Cache contents for the UI: groups (Group Cache), blocks (block cache) or ranges (Range Cache)."""
         c = self.cache_obj
         if c is None:
             return None
@@ -208,14 +201,13 @@ class Session:
         }
 
 
-# ------------------------------------------------------------------ benchmarks
+
 BENCH_LIMITS = dict(keys=30_000, ops_total=60_000, seeds=5, caches=8)
 
 
 def run_benchmark(caches, seeds, keys=10_000, warmup=5_000, ops=10_000, write_ratio=0.5,
                   scan_share=0.2, zipf=0.8, cache_frac=0.05, block_size=48, policy="leveling",
                   insert_share=0.5, seed_offset=0):
-    """Small run_trace() comparison for the UI (demo scale, not for the paper)."""
     if not caches or len(caches) > BENCH_LIMITS["caches"]:
         raise ValueError(f"choose 1-{BENCH_LIMITS['caches']} caches")
     bad = [c for c in caches if c not in CACHES]

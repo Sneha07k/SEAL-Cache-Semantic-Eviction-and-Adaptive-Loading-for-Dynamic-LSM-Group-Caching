@@ -1,4 +1,3 @@
-"""REST API over service.py. Sessions A and B (?sid=) let the UI compare two caches."""
 from typing import Optional
 
 from fastapi import APIRouter, HTTPException, Query
@@ -60,7 +59,6 @@ class RangeIn(BaseModel):
 
 
 class OpsIn(BaseModel):
-    """A batch of operations, e.g. [["scan", 100, 103], ["put", 5, "x"], ["get", 7]]."""
     ops: list[list] = Field(..., min_length=1, max_length=5000)
 
 
@@ -105,7 +103,7 @@ def reset(cfg: Optional[ConfigIn] = None, sid: str = SID):
 def workload(w: WorkloadIn, sid: str = SID):
     d = w.model_dump()
     perm = d.pop("perm_seed")
-    if perm is not None:                       # pin the hot-key set (see workload.generator)
+    if perm is not None:                      
         d["perm_seed"] = perm
     return _call(sessions[sid].run_workload, d.pop("n"), d.pop("key_space"), d.pop("seed"), **d)
 

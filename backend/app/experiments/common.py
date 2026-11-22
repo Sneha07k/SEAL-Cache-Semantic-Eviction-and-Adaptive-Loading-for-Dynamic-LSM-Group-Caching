@@ -1,8 +1,4 @@
-"""Shared experiment machinery: identical engines, traces and metrics for every cache.
 
-Every run: load all keys once (random order) -> warm-up ops -> measured ops.
-Main metric: query block reads per query (gets + scans), lower is better.
-"""
 import math
 import random
 import statistics
@@ -14,8 +10,8 @@ from ..cache.block_cache import BlockCache
 from ..cache.range_cache import RangeCache
 from ..workload.generator import generate
 
-KEY_BYTES, VALUE_BYTES = 8, 256          # Group Cache paper's setting (p.47:14)
-MAX_LEVELS = 8                           # per-level read columns qreads_L0..L7
+KEY_BYTES, VALUE_BYTES = 8, 256          
+MAX_LEVELS = 8                           
 
 CACHES = {
     "none": None,
@@ -25,12 +21,12 @@ CACHES = {
     "group+complete": ("run", GroupCache, dict(complete_on_compaction=True)),
     "group+seed": ("run", GroupCache, dict(seed_on_flush=True)),
     "group+both": ("run", GroupCache, dict(complete_on_compaction=True, seed_on_flush=True)),
-    # Our mechanism with a decision rule (naive / lrus / hot) and placement (inherit / tail).
+   
     **{f"zio-{rule}{'-tail' if pri == 'tail' else ''}":
        ("run", GroupCache, dict(complete_on_compaction=True, seed_on_flush=True,
                                 zio_rule=rule, zio_priority=pri))
        for rule in ("naive", "lrus", "hot") for pri in ("inherit", "tail")},
-    # Diagnostics (not from the paper): plain-LRU admission instead of LRU-S.
+  
     "group-lru": ("run", GroupCache, dict(admission="always")),
     "group-lru+both": ("run", GroupCache, dict(admission="always", complete_on_compaction=True,
                                                seed_on_flush=True)),
@@ -41,7 +37,6 @@ T95 = {1: 12.71, 2: 4.30, 3: 3.18, 4: 2.78, 5: 2.57, 6: 2.45, 7: 2.36, 8: 2.31, 
 
 
 def ci95(xs):
-    """Half-width of a two-sided 95% t confidence interval."""
     if len(xs) < 2:
         return 0.0
     df = len(xs) - 1
@@ -65,10 +60,6 @@ def build_engine(cache, keys, cache_frac, block_size=16, memtable=1024, policy="
 
 
 def with_inserts(ops, insert_share, keys, seed):
-    """Map the generator's key ids k -> 2k (loaded keys are even) and turn a share of the
-    writes into INSERTS of new keys at random odd positions, as in Group Cache Sec. 7.2
-    ("50% of the write operations are insert, and the others are update").
-    Scans keep the same number of loaded keys (range bounds are doubled)."""
     rng = random.Random(seed * 7919 + 17)
     out = []
     for op in ops:
@@ -85,10 +76,7 @@ def run_trace(cache, seed, *, keys=50_000, warmup=20_000, ops=40_000, cache_frac
               write_ratio=0.0, scan_share=0.2, zipf=0.8, scan_len=(10, 100),
               block_size=16, memtable=1024, policy="leveling", granularity="file",
               insert_share=0.0):
-    """One run; returns a dict of metrics. Same seed => same trace for every cache.
-
-    insert_share > 0 switches to the paper's write mix (see with_inserts); loaded keys are
-    then the even numbers 0..2*keys-2."""
+   
     eng = build_engine(cache, keys, cache_frac, block_size, memtable, policy, seed,
                        granularity)
     order = list(range(keys))
@@ -98,7 +86,7 @@ def run_trace(cache, seed, *, keys=50_000, warmup=20_000, ops=40_000, cache_frac
         eng.put(scale * k, f"init{k}")
     mix = dict(write_ratio=write_ratio, delete_ratio=0.0,
                scan_ratio=scan_share * (1 - write_ratio), scan_len=scan_len, zipf_theta=zipf)
-    # same hot-key set (perm_seed) for warm-up and measurement; see DECISIONS.md §11
+    
     warm = generate(warmup, keys, seed + 1000, perm_seed=seed, **mix)
     measured = generate(ops, keys, seed, perm_seed=seed, **mix)
     if insert_share:
@@ -124,7 +112,7 @@ def run_trace(cache, seed, *, keys=50_000, warmup=20_000, ops=40_000, cache_frac
                query_reads=reads, reads_per_query=reads / max(queries, 1),
                compactions=eng.stats["compactions"],
                trivial_moves=eng.stats["trivial_moves"])
-    # query reads per level (L0 = flushed, not yet compacted)
+   
     lv_after = eng.io.level_snapshot()
     for lvl in range(MAX_LEVELS):
         row[f"qreads_L{lvl}"] = lv_after.get(lvl, 0) - lv_before.get(lvl, 0)
@@ -139,8 +127,6 @@ def run_trace(cache, seed, *, keys=50_000, warmup=20_000, ops=40_000, cache_frac
 
 
 def maintenance_columns(c, stats_before, eng_before, eng_after):
-    """GroupCache overhead columns. meas_* = measured window only; maint_* = end-of-run snapshot;
-    maint_hit_frac is NaN when no maintained group was created."""
     st = c.stats
     out = {f"meas_{k}": st[k] - stats_before[k] for k in st if not k.startswith("maint_")}
     out["meas_flushes"] = eng_after["flushes"] - eng_before["flushes"]
@@ -157,7 +143,6 @@ def maintenance_columns(c, stats_before, eng_before, eng_after):
 
 
 def summarize(rows, by, caches, value="reads_per_query"):
-    """{(by-value, cache): (mean, ci95)} over seeds."""
     out = {}
     for x in sorted({r[by] for r in rows}):
         for c in caches:

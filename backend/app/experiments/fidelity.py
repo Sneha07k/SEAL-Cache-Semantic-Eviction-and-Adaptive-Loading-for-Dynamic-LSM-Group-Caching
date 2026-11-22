@@ -1,16 +1,3 @@
-"""Fidelity check: does our Group Cache reproduce the TRENDS its paper reports?
-
-Paper claims tested (Wang et al., SIGMOD 2026), all at equal memory:
-  scan     Fig. 7: group beats block and range; with 0% scans range ~= group (both act as
-           KV caches); the advantage shrinks as the scan share grows.
-  write    Fig. 11: group stays best as writes grow; range approaches group; block suffers
-           most from compaction invalidation.
-  size     p.47:3: block cache needs ~4x the memory to match group.
-The paper reports throughput/latency on RocksDB; we compare block reads in a simulator,
-so only the DIRECTION and rough size of effects can be checked.
-
-    python -m app.experiments.fidelity --sweep scan|write|size|zipf [--seeds 3] [--quick]
-"""
 import argparse
 import csv
 import time

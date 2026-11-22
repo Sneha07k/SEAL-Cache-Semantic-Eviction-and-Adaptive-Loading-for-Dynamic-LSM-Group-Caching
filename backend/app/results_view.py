@@ -28,7 +28,7 @@ def _num(v):
         f = float(v)
     except (TypeError, ValueError):
         return None
-    return None if f != f else f                 # NaN = undefined; JSON has no NaN
+    return None if f != f else f                 
 
 
 def _sweep_param(rows):
@@ -68,7 +68,6 @@ def load_result(name):
     seeds = sorted({int(float(r["seed"])) for r in rows})
 
     def vals(cache, x, col="reads_per_query"):
-        """{seed: value} for one cache at one sweep value."""
         return {int(float(r["seed"])): _num(r.get(col)) for r in rows
                 if r["cache"] == cache and (param is None or _num(r[param]) == x)
                 and _num(r.get(col)) is not None}

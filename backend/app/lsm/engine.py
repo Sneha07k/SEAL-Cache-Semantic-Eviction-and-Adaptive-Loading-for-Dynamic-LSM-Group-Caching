@@ -1,19 +1,4 @@
-"""A block-level LSM-tree simulator.
 
-What it models (and counts as disk I/O):
-  * point reads and scans read whole blocks, one I/O per block;
-  * flushes write the MemTable as a new L0 run;
-  * compactions read every input block and write every output block.
-Leveling granularity (config.granularity):
-  * "file"  (default, LevelDB/RocksDB style): levels >= 1 hold non-overlapping SST files;
-    a compaction merges ONE file with the next level's overlapping files, picked
-    round-robin over the key space; a file overlapping nothing is moved down (no I/O).
-  * "level": whole levels are merged (kept for comparison; exaggerates rewrites).
-Tiering always merges all runs of a level into one run appended to the next level.
-Recency is by POSITION, as in real LSM-trees: L0 runs newest-first, then L1, L2, ...
-What it does NOT model: concurrency, timing/latency, crash recovery (WAL), L0->L0.
-Keys must be mutually comparable integers. A value of None means "deleted".
-"""
 from bisect import bisect_left, bisect_right
 
 from .run import Run, TOMBSTONE
@@ -25,25 +10,24 @@ from ..config import LSMConfig
 class LSMEngine:
     def __init__(self, config: LSMConfig = LSMConfig()):
         self.cfg = config
-        self.memtable = {}            # key -> value (None = tombstone)
-        self.levels = [[]]            # levels[i] = list of runs/files; levels[0] = L0
+        self.memtable = {}           
+        self.levels = [[]]           
         self.io = IOCounter()
         self.observers: list[LSMObserver] = []
         self._next_seq = 0
-        self._compact_ptr = {}        # level -> last key compacted (round-robin picking)
+        self._compact_ptr = {}       
         self.stats = {"flushes": 0, "compactions": 0, "trivial_moves": 0}
-        self.last_read_blocks = []    # block ids read by the most recent get/scan (for the UI)
-        self.cache = None             # optional run-level cache (see attach_cache)
-        self.query_cache = None       # optional query-level cache (see attach_query_cache)
+        self.last_read_blocks = []   
+        self.cache = None            
+        self.query_cache = None      
 
     @property
     def _files_mode(self):
         return self.cfg.policy == "leveling" and self.cfg.granularity == "file"
 
-    # ------------------------------------------------------------- caches
+   
     def attach_cache(self, cache):
-        """Attach a run-level cache (lookup(run, lo, hi), admit(run, block_index, lo, hi),
-        plus observer hooks). Must be attached to an empty engine."""
+       
         if not self.cfg.ideal_filters:
             raise ValueError("run-level caches assume ideal filters (as Group Cache does)")
         if self.levels != [[]] or self.memtable or self.query_cache is not None:
@@ -52,13 +36,12 @@ class LSMEngine:
         self.observers.append(cache)
 
     def attach_query_cache(self, qcache):
-        """Attach a query-result cache (e.g. RangeCache): consulted before any run is
-        touched, updated write-through on every put/delete."""
+        
         if self.levels != [[]] or self.memtable or self.cache is not None:
             raise ValueError("attach one cache to an empty engine")
         self.query_cache = qcache
 
-    # ------------------------------------------------------------------ writes
+    
     def put(self, key, value):
         if value is TOMBSTONE:
             raise ValueError("use delete() to remove a key")
@@ -92,9 +75,9 @@ class LSMEngine:
         self._next_seq += 1
         return self._next_seq
 
-    # ------------------------------------------------------------- compaction
+   
     def level_capacity(self, i):
-        """Entries allowed in level i >= 1."""
+       
         return self.cfg.l1_capacity * self.cfg.size_ratio ** (i - 1)
 
     def _level_size(self, i):
@@ -130,7 +113,7 @@ class LSMEngine:
             self.levels[i], self.levels[i + 1] = [], []
             self._merge_into(inputs, i + 1, as_files=False)
         elif i == 0:
-            # All L0 runs (they overlap each other) + overlapping L1 files.
+           
             upper = list(self.levels[0])
             lo, hi = min(r.min_key for r in upper), max(r.max_key for r in upper)
             lower = self._overlapping_files(1, lo, hi)
@@ -142,7 +125,7 @@ class LSMEngine:
             lower = self._overlapping_files(i + 1, f.min_key, f.max_key)
             self._remove_files(i, [f])
             self._compact_ptr[i] = f.max_key
-            if not lower:                               # trivial move: no rewrite, no I/O
+            if not lower:                              
                 self._insert_files(i + 1, [f])
                 self.stats["trivial_moves"] += 1
                 return
@@ -151,7 +134,6 @@ class LSMEngine:
         self.stats["compactions"] += 1
 
     def _pick_file(self, i):
-        """Round-robin over the key space (LevelDB's compact pointer)."""
         files = self.levels[i]
         ptr = self._compact_ptr.get(i)
         if ptr is not None:
@@ -174,23 +156,16 @@ class LSMEngine:
         self.levels[i] = sorted(self.levels[i] + files, key=lambda f: f.min_key)
 
     def _merge_into(self, inputs, target, as_files):
-        """Merge input runs into `target` level. Reads/writes are counted as I/O.
-
-        Inputs are ordered by recency: lower level index = newer; within a level, higher
-        seq = newer. Tombstones are dropped only if no older data outside the inputs could
-        hold the same keys (no remaining run at the target level or deeper overlaps).
-        """
         lo, hi = min(r.min_key for r in inputs), max(r.max_key for r in inputs)
         older = [r for lvl in self.levels[target:] for r in lvl
                  if r.min_key <= hi and r.max_key >= lo]
         drop_tombstones = not older
 
         merged = {}
-        # Oldest first so newer values overwrite: deeper level = older; within a level,
-        # lower seq = older (L0 / tiering runs overlap; leveled files never do).
+       
         for run in sorted(inputs, key=lambda r: (-r.level, r.seq)):
             self.io.add(COMPACTION_READ, len(run.blocks))
-            merged.update(run.entries())               # newer runs applied last
+            merged.update(run.entries())             
         items = sorted(merged.items())
         if drop_tombstones:
             items = [(k, v) for k, v in items if v is not TOMBSTONE]
@@ -212,9 +187,8 @@ class LSMEngine:
         for ob in self.observers:
             ob.on_compaction(inputs, outputs, items)
 
-    # ------------------------------------------------------------------ reads
+  
     def runs_newest_first(self):
-        """All runs/files in recency order: L0 newest first, then L1, L2, ..."""
         out = sorted(self.levels[0], key=lambda r: -r.seq)
         for lvl in self.levels[1:]:
             out.extend(sorted(lvl, key=lambda r: -r.seq))
@@ -232,7 +206,6 @@ class LSMEngine:
                 yield from sorted(lvl, key=lambda r: -r.seq)
 
     def get(self, key):
-        """Latest value for key, or None if absent/deleted."""
         self.last_read_blocks = []
         if key in self.memtable:
             return self.memtable[key]
@@ -254,10 +227,10 @@ class LSMEngine:
             found, value = block.get(key)
             if self.cache is not None:
                 if not found:
-                    continue                        # ideal filter: run lacks the key
+                    continue                       
                 served, uncovered = self.cache.lookup(run, key, key)
                 if not uncovered:
-                    return served[0][1]             # served from cache, no I/O
+                    return served[0][1]           
                 self.io.add(POINT_READ, level=run.level)
                 self.last_read_blocks.append(block.block_id)
                 self.cache.admit(run, run.owner_index(key), key, key)
@@ -270,7 +243,7 @@ class LSMEngine:
         return None
 
     def scan(self, lo, hi):
-        """All live (key, value) with lo <= key <= hi, sorted by key."""
+     
         self.last_read_blocks = []
         if lo > hi:
             return []
@@ -285,11 +258,11 @@ class LSMEngine:
 
     def _scan_runs(self, lo, hi):
         result = {}
-        for run in reversed(self.runs_newest_first()):     # oldest first; newer overwrite
+        for run in reversed(self.runs_newest_first()):    
             if run.max_key < lo or run.min_key > hi:
                 continue
             if self.cache is not None:
-                if not run.has_keys_in(lo, hi):     # ideal range filter: skip run
+                if not run.has_keys_in(lo, hi):     
                     continue
                 served, uncovered = self.cache.lookup(run, lo, hi)
                 result.update(served)
@@ -317,9 +290,8 @@ class LSMEngine:
                 result[k] = v
         return sorted((k, v) for k, v in result.items() if v is not TOMBSTONE)
 
-    # ------------------------------------------------------------- invariants
+  
     def check_invariants(self):
-        """Raise AssertionError if the structure is inconsistent."""
         ids = set()
         for i, lvl in enumerate(self.levels):
             if i >= 1 and self.cfg.policy == "leveling":

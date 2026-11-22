@@ -1,8 +1,3 @@
-"""Warm-up calibration (not a result). Rule, fixed beforehand: smallest warm-up W where W -> 2W
-changes mean reads/query by < 1% for group and zio-naive. Seeds 100-102.
-
-    python -m app.experiments.calibrate_warmup --workers 12
-"""
 import argparse
 import csv
 import statistics
