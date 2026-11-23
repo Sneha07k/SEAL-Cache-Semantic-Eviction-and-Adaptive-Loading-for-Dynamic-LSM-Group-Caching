@@ -1,8 +1,7 @@
 # LSM cache testbed (zero-I/O KV-group maintenance)
 
 Research testbed for comparing LSM-tree caches (block, Range Cache, Group Cache)
-and our zero-I/O KV-group maintenance mechanism. See `CLAUDE.md` (status, rules) and `docs/DECISIONS.md` (rationale).
-
+and our zero-I/O KV-group maintenance mechanism.
 ## Run
 Backend (Python 3.11+):
 
@@ -441,7 +440,6 @@ backend/
   results/          experiment CSVs and step summaries
   run_week3.sh      all week-3 sweeps
 analysis/           paired statistics, figures, summary tables
-docs/DECISIONS.md   decision log, claims, threats to validity, paper plan
 frontend/           React + Vite UI
 ```
 
